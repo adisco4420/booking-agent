@@ -1,0 +1,7 @@
+node_modules
+dist
+data
+.env
+*.json.b64
+service-account*.json
+key.json
