@@ -1,4 +1,5 @@
-// Business configuration. Swap these for the real salon before recording.
+// Business configuration. Fade & Finesse Studio is a fictional business and all
+// data here is made up, per the exercise's test-data-only rule.
 // Everything the agent quotes (services, prices, hours) should come from here
 // or from SKILL.md, and the two must agree.
 

@@ -1,6 +1,6 @@
 # Salon booking agent on Chord
 
-A WhatsApp booking agent for a Lagos barbershop, built on [Chord](https://tsglabs.dev). A customer picks a service and time in chat; the agent holds the slot in the shop's Google Sheet and sends a Paystack deposit link. **No deposit, no booking**: the slot is confirmed only after the payment is verified with Paystack.
+A WhatsApp booking agent for a Lagos barbershop, built on [Chord](https://tsglabs.dev). Fade & Finesse Studio, its address and its prices are made up, and Paystack runs in test mode only. A customer picks a service and time in chat; the agent holds the slot in the shop's Google Sheet and sends a Paystack deposit link. **No deposit, no booking**: the slot is confirmed only after the payment is verified with Paystack.
 
 ## Why this job
 
