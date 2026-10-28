@@ -69,7 +69,7 @@ The owner can add a walk-in by typing a row with just a **Date**, **Time** and (
 
 - Dates: any way Sheets accepts them (a real date cell), or plain text such as `10/12/2026` (day first), `10 Dec 2026`, `Dec 10` or `2026-12-10`. The diary is read unformatted, so the display format doesn't matter, but the **locale does**: Sheets converts a typed `10/12/2026` using the spreadsheet's locale before the server sees it, and in a US-locale sheet that is 12 October. Set File → Settings → Locale to United Kingdom (day first, like Nigeria, which Sheets doesn't list); the server logs a warning at boot if the locale is month-first.
 - Times: a real time cell, or text such as `17:00`, `5pm`, `5:00 PM` or `17.00`.
-- Status: blank, `booked`, `walk-in`, `confirmed` or `paid` all block the slot. To cancel, type `cancelled` (or `released`); clearing the Status cell keeps the slot blocked.
+- Status: blank, `booked`, `walk-in`, `confirmed` or `paid` all block the slot. To cancel a booking, type `cancelled` in its Status cell rather than deleting the row: the slot frees up, and if the customer comes back the agent tells them the shop cancelled it instead of re-booking it. Clearing the Status cell keeps the slot blocked. A deleted row whose deposit was paid is flagged to the owner, and the customer is told the owner will be in touch.
 
 Rows the server can't read as a date and a bookable slot time (for example a bare `14`, or `14:30` on an hourly grid) block nothing. The server logs each one once as `[SHEET] Row N ... blocks nothing`, so check the logs when a walk-in "didn't take".
 

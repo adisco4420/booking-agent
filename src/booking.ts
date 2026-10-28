@@ -279,8 +279,12 @@ export async function verifyPayment(store: Store, payments: Payments, args: { re
   const booking = rows.find((b) => b.reference === reference);
   if (!booking) {
     if (pay.status === "success") {
+      // Usually the owner deleted the row. Money moved, so flag it, but never tell the customer the slot is theirs.
       await reconcile({ kind: "paid_unknown_reference", reference, amountKobo: pay.amountKobo, paidAt: pay.paidAt });
-      return { ok: true, code: "paid_needs_manual_record", reference, message: "Payment found but no matching booking. Owner flagged." };
+      return {
+        ok: true, code: "paid_booking_missing", reference,
+        message: "Deposit found, but there is no matching booking in the diary. The owner has been flagged to contact the customer.",
+      };
     }
     return { ok: false, code: "unknown_reference", message: "No booking with that reference." };
   }
@@ -288,6 +292,12 @@ export async function verifyPayment(store: Store, payments: Payments, args: { re
   const summary = { reference, service: booking.service, date: booking.date, time: booking.time, name: booking.name };
 
   if (booking.status === "booked") return { ok: true, code: "already_booked", ...summary };
+
+  // The owner cancelled it in the Sheet. Final: a later payment or a returning customer
+  // must not quietly re-book it. Deposit handling is the owner's call.
+  if (booking.status === "cancelled") {
+    return { ok: true, code: "cancelled", ...summary, depositPaid: pay.status === "success" };
+  }
 
   // ---- Not paid (yet)
   if (pay.status !== "success") {

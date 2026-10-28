@@ -12,7 +12,8 @@ export type BookingStatus =
   | "pending" //   slot held, deposit not yet confirmed
   | "booked" //    deposit confirmed, slot is theirs
   | "released" //  hold dropped (expired, unpaid, lost a race, or link failed)
-  | "paid_slot_conflict"; // paid, but the hold expired and someone else took the slot
+  | "paid_slot_conflict" // paid, but the hold expired and someone else took the slot
+  | "cancelled"; //  the owner cancelled it in the Sheet; final, never re-booked automatically
 
 export interface Booking {
   reference: string;
@@ -61,7 +62,9 @@ const BOOKED_SYNONYMS = new Set(["", "booked", "confirmed", "paid", "walk-in", "
 
 export function normalizeStatus(raw: string): BookingStatus {
   const s = raw.trim().toLowerCase();
-  return (BOOKED_SYNONYMS.has(s) ? "booked" : s) as BookingStatus;
+  if (BOOKED_SYNONYMS.has(s)) return "booked";
+  if (["cancelled", "canceled", "cancel"].includes(s)) return "cancelled";
+  return s as BookingStatus;
 }
 
 /** Exported for unit tests. Cells come from an unformatted read, so dates and times may be numbers. */

@@ -1,6 +1,9 @@
 // Unit checks for how hand-typed sheet cells are read. Run via `npm test` (uses tsx).
 import { normalizeDate, normalizeTime } from "../src/time.ts";
-import { fromRow } from "../src/store.ts";
+import { fromRow, MemoryStore } from "../src/store.ts";
+import { MockPayments } from "../src/paystack.ts";
+import { holdSlotAndCreateDeposit, verifyPayment, checkAvailability } from "../src/booking.ts";
+import { addDays, lagosDate } from "../src/time.ts";
 
 let failures = 0;
 const eq = (label, got, want) => {
@@ -44,6 +47,43 @@ eq("walk-in row: time", walkIn.time, "17:00");
 eq("walk-in row: status 'Walk-in' blocks as booked", walkIn.status, "booked");
 eq("walk-in row: blank status blocks as booked", fromRow(["", "", "2026-12-10", "17:00"], now).status, "booked");
 eq("released row stays released", fromRow(["FF-1", "Released", "2026-12-10", "17:00"], now).status, "released");
+
+eq("'Cancelled' status reads as cancelled", fromRow(["FF-1", "Cancelled", "2026-12-10", "17:00"], now).status, "cancelled");
+eq("'canceled' (US spelling) reads as cancelled", fromRow(["FF-1", "canceled", "2026-12-10", "17:00"], now).status, "cancelled");
+
+// Owner edits after a paid booking: cancel in the Sheet, or delete the row.
+{
+  const store = new MemoryStore();
+  const pay = new MockPayments("http://local");
+  // Find an open weekday a few days out.
+  let date;
+  for (let i = 3; i < 12; i++) {
+    const d = addDays(lagosDate(), i);
+    const r = await checkAvailability(store, { date: d });
+    if (r.freeSlots?.length) { date = d; break; }
+  }
+  const book = async (time) => {
+    const h = await holdSlotAndCreateDeposit(store, pay, { name: "Unit", service: "haircut", date, time });
+    pay.paid.set(h.reference, pay.expected.get(h.reference));
+    const v = await verifyPayment(store, pay, { reference: h.reference });
+    return { h, v };
+  };
+
+  const a = await book("10:00");
+  eq("owner-cancel setup: paid booking is booked", a.v.code, "booked");
+  const row = store.rows.find((r) => r.reference === a.h.reference);
+  row.status = "cancelled";
+  const again = await verifyPayment(store, pay, { reference: a.h.reference });
+  eq("owner cancelled a paid booking: verify says cancelled", again.code, "cancelled");
+  eq("owner cancelled a paid booking: deposit flagged as paid", again.depositPaid, true);
+  eq("owner cancelled a paid booking: row NOT re-booked", store.rows.find((r) => r.reference === a.h.reference).status, "cancelled");
+  eq("owner cancelled a paid booking: slot is free again", (await checkAvailability(store, { date, time: "10:00" })).code, "available");
+
+  const b = await book("11:00");
+  store.rows = store.rows.filter((r) => r.reference !== b.h.reference);
+  const gone = await verifyPayment(store, pay, { reference: b.h.reference });
+  eq("owner deleted a paid booking's row: paid_booking_missing (never 'reserved')", gone.code, "paid_booking_missing");
+}
 
 console.log(failures ? `\n${failures} UNIT FAILED\n` : "\nUNIT ALL PASSED\n");
 process.exit(failures ? 1 : 0);
