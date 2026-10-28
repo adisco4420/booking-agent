@@ -24,18 +24,75 @@ export function lagosTime(at: Date = new Date()): string {
 }
 
 /**
- * Coerce a time read from the sheet to HH:MM. A hand-typed "14:00" may come
- * back from Sheets as "14:00:00" or "2:00 PM" depending on cell format.
- * Unrecognised input is returned trimmed, unchanged.
+ * Coerce a time read from the sheet to HH:MM. Sheets is read unformatted, so a
+ * hand-typed time arrives as a day fraction (0.5833 = 14:00). A cell formatted
+ * as plain text can hold "14:00:00", "2:00 PM", "2pm" or "14.00".
+ * Unrecognised input is returned trimmed, unchanged (and so never matches a slot).
  */
-export function normalizeTime(raw: string): string {
-  const m = raw.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp]\.?[Mm]\.?)?$/);
-  if (!m) return raw.trim();
+export function normalizeTime(raw: string | number): string {
+  if (typeof raw === "number") {
+    // A whole number is a typed "14" or "5", not a time cell: as ambiguous as the text form.
+    if (Number.isInteger(raw)) return String(raw);
+    const minutes = Math.round((raw - Math.floor(raw)) * 1440) % 1440;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
+  const m = raw.trim().match(/^(\d{1,2})(?:[:.](\d{2}))?(?::\d{2})?\s*([AaPp]\.?[Mm]\.?)?$/);
+  if (!m || (!m[2] && !m[3])) return raw.trim(); // a bare "14" is too ambiguous
   let h = Number(m[1]);
   const meridiem = m[3]?.[0].toLowerCase();
   if (meridiem === "p" && h < 12) h += 12;
   if (meridiem === "a" && h === 12) h = 0;
-  return `${String(h).padStart(2, "0")}:${m[2]}`;
+  if (h > 23) return raw.trim();
+  return `${String(h).padStart(2, "0")}:${m[2] ?? "00"}`;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const SHEETS_EPOCH_MS = Date.UTC(1899, 11, 30);
+
+/**
+ * Coerce a date read from the sheet to YYYY-MM-DD. Sheets turns a typed date
+ * into a serial number (days since 1899-12-30), which is what an unformatted
+ * read returns. For cells formatted as plain text, accepts ISO dates, day-first
+ * numeric dates (10/12/2026, Nigerian convention) and month names
+ * ("10 Dec 2026", "Dec 10", "Thu 10 December"). A missing year means the next
+ * occurrence, counting anything up to 30 days back as this year.
+ * Unrecognised input is returned trimmed, unchanged (and so never matches a slot).
+ */
+export function normalizeDate(raw: string | number, now: Date = new Date()): string {
+  if (typeof raw === "number") {
+    return new Date(SHEETS_EPOCH_MS + Math.floor(raw) * 86_400_000).toISOString().slice(0, 10);
+  }
+  const s = raw.trim();
+  const iso = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T\s].*)?$/);
+  if (iso) return build(+iso[1], +iso[2], +iso[3]) ?? s;
+  const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/);
+  if (dmy) return build(fullYear(+dmy[3]), +dmy[2], +dmy[1]) ?? s;
+
+  const words = s.toLowerCase().replace(/,/g, " ").replace(/(\d)(st|nd|rd|th)\b/g, "$1").split(/\s+/).filter(Boolean);
+  let day: number | undefined, month: number | undefined, year: number | undefined;
+  for (const w of words) {
+    const mi = MONTHS.indexOf(w.slice(0, 3));
+    if (mi >= 0 && /^[a-z]+$/.test(w)) month = mi + 1;
+    else if (/^\d{4}$/.test(w)) year = +w;
+    else if (/^\d{1,2}$/.test(w) && day === undefined) day = +w;
+  }
+  if (!day || !month) return s;
+  if (year) return build(year, month, day) ?? s;
+  const today = lagosDate(now);
+  const thisYear = +today.slice(0, 4);
+  const candidate = build(thisYear, month, day);
+  if (!candidate) return s;
+  const cutoff = addDays(today, -30);
+  return candidate >= cutoff ? candidate : build(thisYear + 1, month, day) ?? s;
+}
+
+function fullYear(y: number) {
+  return y < 100 ? 2000 + y : y;
+}
+
+function build(y: number, m: number, d: number): string | undefined {
+  const out = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return isValidDate(out) ? out : undefined;
 }
 
 export function slotStart(date: string, time: string): Date {

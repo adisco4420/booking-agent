@@ -57,6 +57,7 @@ You have three tools. Always use them in this order.
 | `held` | Slot held, link created | Send link, amount, reference, 15-minute window. |
 | `payment_link_failed` | Paystack link failed; nothing was held | Apologise, offer to try again in a minute. |
 | `awaiting_payment` | Not paid yet, hold still active | Tell them payment hasn't come through yet and how many minutes are left (`holdMinutesLeft`). Resend `paymentUrl`. |
+| `payment_failed` | Their card was declined; the hold is still active | Tell them the payment didn't go through and nothing was charged, and that they can try again or use another card on the same link (`paymentUrl`) within `holdMinutesLeft` minutes. Don't say "booked". |
 | `payment_processing` | Paystack still processing | Ask them to wait a minute, then check again. |
 | `booked` | Paid and confirmed | Confirm: service, day, date, time, address, balance to pay at the shop. Done. |
 | `already_booked` | Already confirmed earlier | Reassure them it's confirmed and repeat the details. |

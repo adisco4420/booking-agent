@@ -118,7 +118,7 @@ function buildServer(): McpServer {
       title: "Verify deposit payment",
       description:
         "Check the deposit for a booking reference with Paystack and update the booking. " +
-        "Codes: booked, already_booked, awaiting_payment, payment_processing, released_unpaid, paid_slot_conflict, paid_needs_manual_record, amount_mismatch, unknown_reference. " +
+        "Codes: booked, already_booked, awaiting_payment, payment_failed, payment_processing, released_unpaid, paid_slot_conflict, paid_needs_manual_record, amount_mismatch, unknown_reference. " +
         "Call when the customer says they have paid. Safe to call more than once.",
       inputSchema: { reference: z.string().describe("Booking reference returned by hold_slot_and_create_deposit, e.g. FF-261024-A1B2C3.") },
       annotations: { idempotentHint: true },
@@ -209,6 +209,12 @@ if (payments instanceof MockPayments) {
       res.status(404).send("unknown reference");
       return;
     }
+    if (req.query.outcome === "failed") {
+      mock.failed.add(ref); // simulate a declined card; the link can be retried
+      res.status(402).send("card declined (mock)");
+      return;
+    }
+    mock.failed.delete(ref);
     mock.paid.set(ref, amt);
     res.redirect(`/paid?reference=${ref}`);
   });

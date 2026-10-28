@@ -5,6 +5,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Unit checks for sheet-cell parsing first (no server needed).
+const unit = spawn("npx", ["tsx", "scripts/unit.mjs"], { stdio: "inherit" });
+const unitCode = await new Promise((r) => unit.on("exit", r));
+if (unitCode !== 0) process.exit(unitCode ?? 1);
+
 const port = 3900 + Math.floor(Math.random() * 90);
 const token = randomBytes(32).toString("hex");
 const env = {

@@ -296,8 +296,11 @@ export async function verifyPayment(store: Store, payments: Payments, args: { re
     const expired = booking.status !== "pending" || new Date(booking.holdExpiresAt) <= now;
     if (!expired || inFlight) {
       const minutesLeft = Math.max(0, Math.ceil((new Date(booking.holdExpiresAt).getTime() - now.getTime()) / 60_000));
+      // A declined card is not "still waiting": tell the customer to retry, the hold stands.
+      // The same Paystack link accepts another attempt.
+      const code = inFlight ? "payment_processing" : pay.status === "failed" ? "payment_failed" : "awaiting_payment";
       return {
-        ok: true, code: inFlight ? "payment_processing" : "awaiting_payment", ...summary,
+        ok: true, code, ...summary,
         paystackStatus: pay.status, paymentUrl: booking.paymentUrl || undefined, holdMinutesLeft: minutesLeft,
       };
     }

@@ -1,5 +1,8 @@
 import { GoogleAuth } from "google-auth-library";
-import { normalizeTime } from "./time.js";
+import { isValidDate, normalizeDate, normalizeTime, slotsForDate } from "./time.js";
+
+/** Locales where Sheets reads a typed 10/12/2026 as month first. */
+const MONTH_FIRST_LOCALES = new Set(["en_US", "es_US", "en_PH", "fil_PH"]);
 
 /**
  * One row per booking attempt. The Google Sheet is the owner's view of the
@@ -47,14 +50,31 @@ function toRow(b: Booking): string[] {
   return COLUMNS.map((k) => String(b[k] ?? ""));
 }
 
-function fromRow(r: string[]): Booking {
+type Cell = string | number | boolean;
+
+/**
+ * Status words an owner might type for a walk-in. A row with a date and time
+ * but no status is treated as booked: blocking a slot by mistake is cheaper
+ * than double-booking a customer.
+ */
+const BOOKED_SYNONYMS = new Set(["", "booked", "confirmed", "paid", "walk-in", "walkin", "walk in", "reserved", "taken"]);
+
+export function normalizeStatus(raw: string): BookingStatus {
+  const s = raw.trim().toLowerCase();
+  return (BOOKED_SYNONYMS.has(s) ? "booked" : s) as BookingStatus;
+}
+
+/** Exported for unit tests. Cells come from an unformatted read, so dates and times may be numbers. */
+export function fromRow(r: Cell[], now: Date = new Date()): Booking {
   const o: Record<string, string> = {};
-  COLUMNS.forEach((k, i) => (o[k] = r[i] ?? ""));
+  COLUMNS.forEach((k, i) => (o[k] = r[i] === undefined || r[i] === null ? "" : String(r[i])));
+  const dateCell = r[COLUMNS.indexOf("date")];
+  const timeCell = r[COLUMNS.indexOf("time")];
   return {
     ...(o as unknown as Booking),
-    status: (o.status || "").trim().toLowerCase() as BookingStatus,
-    date: (o.date || "").trim(),
-    time: normalizeTime(o.time || ""),
+    status: normalizeStatus(o.status || ""),
+    date: typeof dateCell === "number" ? normalizeDate(dateCell) : normalizeDate(o.date || "", now),
+    time: typeof timeCell === "number" ? normalizeTime(timeCell) : normalizeTime(o.time || ""),
     // Tolerate hand-edited amounts like "200,000".
     amountKobo: Number(o.amountKobo.replace(/[^\d.]/g, "") || 0),
   };
@@ -101,12 +121,38 @@ export class SheetsStore implements Store {
     return encodeURIComponent(`${this.tab}!${r}`);
   }
 
-  /** Writes the header row if the sheet is empty. Called once at boot. */
+  /** Writes the header row if the sheet is empty, and checks the sheet's locale. Called once at boot. */
   async ensureHeader() {
     const data = await this.call("GET", `${this.base}/${this.range("A1:M1")}`);
     if (!data.values?.length) {
       await this.call("PUT", `${this.base}/${this.range("A1:M1")}?valueInputOption=RAW`, { values: [HEADER] });
     }
+    // Sheets parses a typed date with the spreadsheet's locale, before we ever read it:
+    // in a US-locale sheet "10/12/2026" is stored as 12 October. Warn, don't fail boot.
+    try {
+      const meta = await this.call("GET", `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=properties.locale`);
+      const locale: string = meta.properties?.locale ?? "unknown";
+      if (MONTH_FIRST_LOCALES.has(locale)) {
+        console.warn(`[SHEET] Locale is ${locale}: dates typed like 10/12/2026 are read month-first. Set File > Settings > Locale to Nigeria.`);
+      }
+    } catch (e) {
+      console.warn(`[SHEET] Could not check spreadsheet locale: ${(e as Error).message}`);
+    }
+  }
+
+  /** Rows already reported, so a bad row is logged once, not on every read. */
+  private warned = new Set<string>();
+
+  /** Log hand-typed rows whose date or time doesn't land on a bookable slot: they block nothing. */
+  private warnUnreadable(rows: Booking[]) {
+    rows.forEach((b, i) => {
+      if (!b.date && !b.time) return;
+      if (isValidDate(b.date) && slotsForDate(b.date).includes(b.time)) return;
+      const key = `${i + 2}|${b.date}|${b.time}`;
+      if (this.warned.has(key)) return;
+      this.warned.add(key);
+      console.warn(`[SHEET] Row ${i + 2} (date "${b.date}", time "${b.time}") isn't a bookable slot, so it blocks nothing.`);
+    });
   }
 
   // Last read of the diary. Availability checks reuse it for a few seconds so a
@@ -115,10 +161,17 @@ export class SheetsStore implements Store {
 
   async list({ maxAgeMs = 0 } = {}): Promise<Booking[]> {
     if (!this.cache || maxAgeMs <= 0 || Date.now() - this.cache.at > maxAgeMs) {
-      const rows = this.call("GET", `${this.base}/${this.range("A2:M")}`).then((data) =>
-        // Owner may hand-enter walk-ins: a row only needs status, date and time to block a slot.
-        ((data.values ?? []) as string[][]).map(fromRow).filter((b) => b.date && b.time),
-      );
+      // Unformatted read: a date or time the owner typed comes back as a serial number,
+      // not in whatever display format the sheet's locale picked (e.g. 10/12/2026).
+      const rows = this.call(
+        "GET",
+        `${this.base}/${this.range("A2:M")}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`,
+      ).then((data) => {
+        const all = ((data.values ?? []) as Cell[][]).map((r) => fromRow(r));
+        this.warnUnreadable(all);
+        // Owner may hand-enter walk-ins: a row only needs a date and time to block a slot.
+        return all.filter((b) => b.date && b.time);
+      });
       const entry = { at: Date.now(), rows };
       this.cache = entry;
       rows.catch(() => { if (this.cache === entry) this.cache = undefined; });

@@ -84,9 +84,13 @@ export class PaystackPayments implements Payments {
   }
 }
 
-/** Local-only fake. GET /mock-pay/:ref marks a reference paid with the expected amount. */
+/**
+ * Local-only fake. GET /mock-pay/:ref marks a reference paid with the expected
+ * amount; GET /mock-pay/:ref?outcome=failed simulates a declined card.
+ */
 export class MockPayments implements Payments {
   paid = new Map<string, number>();
+  failed = new Set<string>();
   expected = new Map<string, number>();
   constructor(private publicBaseUrl: string) {}
   async initialize({ reference, amountKobo }: Parameters<Payments["initialize"]>[0]) {
@@ -95,6 +99,7 @@ export class MockPayments implements Payments {
   }
   async verify(reference: string): Promise<VerifyResult> {
     const amt = this.paid.get(reference);
+    if (amt === undefined && this.failed.has(reference)) return { status: "failed", amountKobo: 0, currency: "NGN" };
     return amt === undefined
       ? { status: "abandoned", amountKobo: 0, currency: "NGN" }
       : { status: "success", amountKobo: amt, currency: "NGN", paidAt: new Date().toISOString() };
