@@ -46,8 +46,8 @@ npm run smoke      # in another shell, same MCP_BEARER_TOKEN
 
 ## Deploy (Coolify)
 
-1. **Sheet**: create a Google Sheet with a tab `Bookings`. Create a GCP service account, enable the Sheets API, download its JSON key, and share the sheet with the service account's `client_email` as Editor. The header row is written on first boot.
-2. **Coolify**: new resource from this repo, build pack Dockerfile, port 3000, set a domain (Coolify issues TLS). Add a persistent volume mounted at `/data`. Set env vars from `.env.example` (`GOOGLE_SERVICE_ACCOUNT_JSON_B64` = `base64 -w0 key.json`).
+1. **Sheet**: create a Google Sheet with a tab `Bookings`, and set **File → Settings → Locale** to Nigeria so typed dates are read day first. Create a GCP service account, enable the Sheets API, download its JSON key, and share the sheet with the service account's `client_email` as Editor. The header row is written on first boot.
+2. **Coolify**: new resource from this repo, build pack Dockerfile, port 3000, set a domain (Coolify issues TLS). Add a persistent volume mounted at `/data`. Set env vars from `.env.example` (`GOOGLE_SERVICE_ACCOUNT_JSON_B64` = `base64 -w0 key.json` on Linux, `base64 -i key.json | tr -d '\n'` on macOS).
 3. Check: `curl https://booking-agent-mcp.vasrefil.com/health`.
 4. **Chord**: register `https://booking-agent-mcp.vasrefil.com/mcp` with header `Authorization: Bearer <MCP_BEARER_TOKEN>` (created disabled), scope it to the teammate, enable, discover tools, allowlist the three tool names.
 5. **Skill**: upload `skill/SKILL.md`, then Review and **Publish** (a saved draft is not live). Check the Instructions badge before testing in the simulator.
@@ -67,11 +67,11 @@ To show the slot-taken path on camera: after the agent says a slot is free, type
 
 The owner can add a walk-in by typing a row with just a **Date**, **Time** and (optionally) **Status**; Reference can stay empty.
 
-- Dates: any way Sheets accepts them (a real date cell), or plain text such as `10/12/2026` (day first), `10 Dec 2026`, `Dec 10` or `2026-12-10`. The diary is read unformatted, so the sheet's display format and locale don't matter.
+- Dates: any way Sheets accepts them (a real date cell), or plain text such as `10/12/2026` (day first), `10 Dec 2026`, `Dec 10` or `2026-12-10`. The diary is read unformatted, so the display format doesn't matter, but the **locale does**: Sheets converts a typed `10/12/2026` using the spreadsheet's locale before the server sees it, and in a US-locale sheet that is 12 October. Set File → Settings → Locale to Nigeria; the server logs a warning at boot if the locale is month-first.
 - Times: a real time cell, or text such as `17:00`, `5pm`, `5:00 PM` or `17.00`.
-- Status: blank, `booked`, `walk-in`, `confirmed` or `paid` all block the slot. Only `released` (or another non-booking word) frees it.
+- Status: blank, `booked`, `walk-in`, `confirmed` or `paid` all block the slot. To cancel, type `cancelled` (or `released`); clearing the Status cell keeps the slot blocked.
 
-Rows the server can't read as a date and time are ignored, so a typo there won't block a slot. That's the one thing to check when a walk-in "didn't take".
+Rows the server can't read as a date and a bookable slot time (for example a bare `14`, or `14:30` on an hourly grid) block nothing. The server logs each one once as `[SHEET] Row N ... blocks nothing`, so check the logs when a walk-in "didn't take".
 
 ## How I used AI tools
 
