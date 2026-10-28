@@ -46,7 +46,7 @@ npm run smoke      # in another shell, same MCP_BEARER_TOKEN
 
 ## Deploy (Coolify)
 
-1. **Sheet**: create a Google Sheet with a tab `Bookings`, and set **File → Settings → Locale** to Nigeria so typed dates are read day first. Create a GCP service account, enable the Sheets API, download its JSON key, and share the sheet with the service account's `client_email` as Editor. The header row is written on first boot.
+1. **Sheet**: create a Google Sheet with a tab `Bookings`, and set **File → Settings → Locale** to **United Kingdom** so typed dates are read day first (Sheets has no Nigeria option), and **Time zone** to `(GMT+01:00) Lagos`. Create a GCP service account, enable the Sheets API, download its JSON key, and share the sheet with the service account's `client_email` as Editor. The header row is written on first boot.
 2. **Coolify**: new resource from this repo, build pack Dockerfile, port 3000, set a domain (Coolify issues TLS). Add a persistent volume mounted at `/data`. Set env vars from `.env.example` (`GOOGLE_SERVICE_ACCOUNT_JSON_B64` = `base64 -w0 key.json` on Linux, `base64 -i key.json | tr -d '\n'` on macOS).
 3. Check: `curl https://booking-agent-mcp.vasrefil.com/health`.
 4. **Chord**: register `https://booking-agent-mcp.vasrefil.com/mcp` with header `Authorization: Bearer <MCP_BEARER_TOKEN>` (created disabled), scope it to the teammate, enable, discover tools, allowlist the three tool names.
@@ -67,7 +67,7 @@ To show the slot-taken path on camera: after the agent says a slot is free, type
 
 The owner can add a walk-in by typing a row with just a **Date**, **Time** and (optionally) **Status**; Reference can stay empty.
 
-- Dates: any way Sheets accepts them (a real date cell), or plain text such as `10/12/2026` (day first), `10 Dec 2026`, `Dec 10` or `2026-12-10`. The diary is read unformatted, so the display format doesn't matter, but the **locale does**: Sheets converts a typed `10/12/2026` using the spreadsheet's locale before the server sees it, and in a US-locale sheet that is 12 October. Set File → Settings → Locale to Nigeria; the server logs a warning at boot if the locale is month-first.
+- Dates: any way Sheets accepts them (a real date cell), or plain text such as `10/12/2026` (day first), `10 Dec 2026`, `Dec 10` or `2026-12-10`. The diary is read unformatted, so the display format doesn't matter, but the **locale does**: Sheets converts a typed `10/12/2026` using the spreadsheet's locale before the server sees it, and in a US-locale sheet that is 12 October. Set File → Settings → Locale to United Kingdom (day first, like Nigeria, which Sheets doesn't list); the server logs a warning at boot if the locale is month-first.
 - Times: a real time cell, or text such as `17:00`, `5pm`, `5:00 PM` or `17.00`.
 - Status: blank, `booked`, `walk-in`, `confirmed` or `paid` all block the slot. To cancel, type `cancelled` (or `released`); clearing the Status cell keeps the slot blocked.
 

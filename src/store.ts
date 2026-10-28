@@ -133,7 +133,7 @@ export class SheetsStore implements Store {
       const meta = await this.call("GET", `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=properties.locale`);
       const locale: string = meta.properties?.locale ?? "unknown";
       if (MONTH_FIRST_LOCALES.has(locale)) {
-        console.warn(`[SHEET] Locale is ${locale}: dates typed like 10/12/2026 are read month-first. Set File > Settings > Locale to Nigeria.`);
+        console.warn(`[SHEET] Locale is ${locale}: dates typed like 10/12/2026 are read month-first. Set File > Settings > Locale to United Kingdom (Sheets has no Nigeria option; UK is day-first too).`);
       }
     } catch (e) {
       console.warn(`[SHEET] Could not check spreadsheet locale: ${(e as Error).message}`);
