@@ -1,6 +1,16 @@
 # Salon booking agent on Chord
 
-A WhatsApp booking agent for a Lagos barbershop, built on [Chord](https://tsglabs.dev). Fade & Finesse Studio, its address and its prices are made up, and Paystack runs in test mode only. A customer picks a service and time in chat; the agent holds the slot in the shop's Google Sheet and sends a Paystack deposit link. **No deposit, no booking**: the slot is confirmed only after the payment is verified with Paystack.
+A WhatsApp booking agent for a Lagos barbershop, built on [Chord](https://www.chordhq.xyz). Fade & Finesse Studio, its address and its prices are made up, and Paystack runs in test mode only. A customer picks a service and time in chat; the agent holds the slot in the shop's Google Sheet and sends a Paystack deposit link. **No deposit, no booking**: the slot is confirmed only after the payment is verified with Paystack.
+
+## Try it
+
+**Live agent:** https://chat.tsglabs.dev/c/LNupBMBCY9EBVNArcPltw7pk (TSG WhatsApp simulator, teammate "Fade & Finesse Bookings")
+
+1. Ask for a haircut, for example "Haircut Saturday at 3pm, I'm Tunde", and say yes when it reads the booking back.
+2. Open the Paystack link and pick **Success** (test mode, no real money).
+3. Back in the chat, reply "paid". It checks Paystack and confirms. Reply "paid" before paying and it should say the payment hasn't come through.
+
+What I hit while building and deploying it is in [FIELD_NOTES.md](FIELD_NOTES.md).
 
 ## Why this job
 
@@ -49,8 +59,9 @@ npm run smoke      # in another shell, same MCP_BEARER_TOKEN
 1. **Sheet**: create a Google Sheet with a tab `Bookings`, and set **File → Settings → Locale** to **United Kingdom** so typed dates are read day first (Sheets has no Nigeria option), and **Time zone** to `(GMT+01:00) Lagos`. Create a GCP service account, enable the Sheets API, download its JSON key, and share the sheet with the service account's `client_email` as Editor. The header row is written on first boot.
 2. **Coolify**: new resource from this repo, build pack Dockerfile, port 3000, set a domain (Coolify issues TLS). Add a persistent volume mounted at `/data`. Set env vars from `.env.example` (`GOOGLE_SERVICE_ACCOUNT_JSON_B64` = `base64 -w0 key.json` on Linux, `base64 -i key.json | tr -d '\n'` on macOS).
 3. Check: `curl https://booking-agent-mcp.vasrefil.com/health`.
-4. **Chord**: register `https://booking-agent-mcp.vasrefil.com/mcp` with header `Authorization: Bearer <MCP_BEARER_TOKEN>` (created disabled), scope it to the teammate, enable, discover tools, allowlist the three tool names.
-5. **Skill**: upload `skill/SKILL.md`, then Review and **Publish** (a saved draft is not live). Check the Instructions badge before testing in the simulator.
+4. **Chord, register the server**: in the Chord app go to Admin → Channels & Tools → Tools → Custom tools (MCP) → **Add server**. URL `https://booking-agent-mcp.vasrefil.com/mcp`, Auth type **bearer** (the default is `none`, which sends no token), Auth token = `MCP_BEARER_TOKEN`, transport `streamable_http`, Allowed tools `check_availability, hold_slot_and_create_deposit, verify_payment`, Enabled on. Leave it enabled: a disabled server doesn't send its token to Chord's health and tool-discovery checks. No API key is needed for this.
+5. **Chord, create the teammate**: Team → Create a teammate → upload `skill/SKILL.md`, set Autonomy to **Act independently**, keep "Activate after setup" on. The skill name isn't read from the frontmatter, so rename it from "Untitled skill" to `salon-booking` in the skill editor afterwards. Any later skill edit must be **published** (Review and publish) before replies use it.
+6. **Simulator**: Admin → Connected apps → allow approved apps, then create a chat link for the teammate at chat.tsglabs.dev.
 
 ### Demo switch for failure path 3
 
@@ -83,6 +94,7 @@ Rows the server can't read as a date and a bookable slot time (for example a bar
 ## What is not production-ready (honestly)
 
 - **Concurrency**: the lock is in-process. With more than one instance, correctness relies on the write-then-read-back check, which narrows the race but doesn't close it. Production: a real database with a unique constraint on `(date, time, chair)`, Sheets as a synced view.
+- **The agent occasionally skips its tool call.** In about 2 of 32 payment checks, Chord answered without calling `verify_payment` at all (my server log shows no request on those turns). The skill makes this safe: the agent may only say "booked" if the check ran in that same turn, so a skipped call gives "I couldn't check, please try again" rather than a false confirmation. Details in field note 1.
 - **Payment confirmation** is synchronous: the customer must come back and say "paid". Production: Paystack `charge.success` webhook (HMAC-verified) confirms the booking and messages the customer proactively; verify-on-return stays as the fallback.
 - **API quotas**: Google Sheets allows 60 reads/min per service account, and a hold costs about 3 reads plus 2 writes, so the ceiling is roughly 15 holds a minute. Availability checks share a 5-second cached read, and Sheets and Paystack 429s are retried with backoff (up to about 15 s), so short bursts get slower rather than failing. Past that, ask Google for a quota increase or move the diary to a database.
 - **Expired holds** are released lazily (on the next verify), so the sheet can show stale `pending` rows. They don't block slots. Production: a sweeper job.
